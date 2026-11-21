@@ -1,0 +1,54 @@
+# RSROLEPLAY Engine — Cloudflare Workers (gói Free)
+#
+# Cách nhanh nhất: bấm nút "Deploy to Cloudflare" trong README. Cloudflare đọc
+# đúng tệp này, tự tạo cơ sở dữ liệu D1 và Durable Object, rồi điền lại mã của
+# chúng vào đây trong bản sao repo của người bấm. Không phải điền gì thêm: cả
+# ứng dụng chỉ cần hai thứ đó, không có khoá bí mật nào.
+#
+# Cách thủ công:
+#   npx wrangler login
+#   npx wrangler d1 create rsroleplay-db     # chép mã nhận được vào database_id
+#   npx wrangler deploy
+#
+# Bảng biểu trong D1 do chính ứng dụng tạo ở lần chạy đầu (xem SCHEMA_SQL trong
+# worker.js), nên không có bước migration nào phải chạy tay.
+
+name = "rsroleplay"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+# Chạy Worker gần D1 và gần nhà cung cấp AI, thay vì gần điện thoại: mỗi tin
+# nhắn là vài vòng đi về tới cả hai, và cách này bỏ được độ trễ của điện thoại
+# ra khỏi tất cả các vòng đó.
+[placement]
+mode = "smart"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "rsroleplay-db"
+# Mã dưới đây chỉ là chỗ giữ chỗ. Nút Deploy sẽ thay bằng mã của cơ sở dữ liệu
+# mới tạo. Nếu cài thủ công thì thay bằng mã mà lệnh `wrangler d1 create` in ra.
+database_id = "7d19ca78-5299-4558-89da-8e3f9ff4f922"
+
+# Bộ máy sinh nội dung (xem `export class ChatStreamer` trong worker.js).
+#
+# Đây là thứ đáng giá nhất trong tệp này. Worker chỉ được 10 mili giây CPU mỗi
+# request, một câu trả lời dài vượt qua mức đó và bị giết ("Worker exceeded CPU
+# time limit" trong log). Durable Object kiểu SQLite được 30 giây, nên phần sinh
+# nội dung chạy trong đó còn Worker chỉ làm ống dẫn. Thiếu ràng buộc này ứng
+# dụng vẫn chạy, nhưng câu trả lời dài có thể bị cắt.
+[[durable_objects.bindings]]
+name = "STREAMER"
+class_name = "ChatStreamer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ChatStreamer"]   # kiểu SQLite - loại mà gói Free cho phép
+
+# Dọn dẹp hằng ngày: phiên đăng nhập hết hạn, dấu vết sinh nội dung đã xong,
+# các chặn IP cũ.
+[triggers]
+crons = ["0 4 * * *"]
+
+[observability]
+enabled = true
